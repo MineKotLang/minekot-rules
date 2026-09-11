@@ -1,0 +1,154 @@
+# ===================================
+# MineKot rules signed release
+# ===================================
+name: Release MineKot rules
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: minekot-rules-release-master
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Verify newest master head
+        run: |
+          git fetch origin master
+          test "${GITHUB_SHA}" = "$(git rev-parse origin/master)"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62
+
+      - name: Build verified release bundle
+        env:
+          RELEASE_VERSION: 1.0.${{ github.run_number }}
+        run: |
+          published_at="$(git show -s --format=%cI "${GITHUB_SHA}")"
+          ./gradlew check assembleRulesRelease \
+            -Pversion="${RELEASE_VERSION}" \
+            -PreleaseVersion="${RELEASE_VERSION}" \
+            -PreleaseCommit="${GITHUB_SHA}" \
+            -PreleasePublishedAt="${published_at}"
+          cosign sign-blob --yes \
+            --bundle "final/minekot-rules-${RELEASE_VERSION}.manifest.sigstore.json" \
+            "final/minekot-rules-${RELEASE_VERSION}.manifest.json"
+          cosign verify-blob \
+            --bundle "final/minekot-rules-${RELEASE_VERSION}.manifest.sigstore.json" \
+            --certificate-identity \
+            "https://github.com/MineKotLang/minekot-rules/.github/workflows/release.yml@refs/heads/master" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "final/minekot-rules-${RELEASE_VERSION}.manifest.json"
+
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: 1.0.${{ github.run_number }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            mkdir -p existing
+            gh release download "${tag}" --dir existing
+            (cd existing && sha256sum -c SHA256SUMS)
+            test "$(find existing -maxdepth 1 -type f | wc -l)" -eq 4
+            cmp "existing/minekot-rules-${RELEASE_VERSION}.jar" \
+              "final/minekot-rules-${RELEASE_VERSION}.jar"
+            cmp "existing/minekot-rules-${RELEASE_VERSION}.manifest.json" \
+              "final/minekot-rules-${RELEASE_VERSION}.manifest.json"
+            cmp existing/SHA256SUMS final/SHA256SUMS
+            cosign verify-blob \
+              --bundle "existing/minekot-rules-${RELEASE_VERSION}.manifest.sigstore.json" \
+              --certificate-identity \
+              "https://github.com/MineKotLang/minekot-rules/.github/workflows/release.yml@refs/heads/master" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "existing/minekot-rules-${RELEASE_VERSION}.manifest.json"
+            exit 0
+          fi
+          if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "${tag}")" = "${GITHUB_SHA}"
+          else
+            git tag "${tag}" "${GITHUB_SHA}"
+            git push origin "${tag}"
+          fi
+          gh release create "${tag}" final/* \
+            --target "${GITHUB_SHA}" \
+            --title "MineKot Rules ${tag}" \
+            --verify-tag
+
+      - name: Update signed stable channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: 1.0.${{ github.run_number }}
+        run: |
+          manifest="final/minekot-rules-${RELEASE_VERSION}.manifest.json"
+          manifest_sha="$(sha256sum "${manifest}" | cut -d' ' -f1)"
+          mkdir -p channel
+          if gh release view channel-stable >/dev/null 2>&1; then
+            gh release download channel-stable --dir channel \
+              --pattern 'minekot-rules-index*.json'
+            cosign verify-blob \
+              --bundle channel/minekot-rules-index.sigstore.json \
+              --certificate-identity \
+              "https://github.com/MineKotLang/minekot-rules/.github/workflows/release.yml@refs/heads/master" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              channel/minekot-rules-index.json
+            existing_digest="$(jq -r --arg version "${RELEASE_VERSION}" \
+              '.releases[] | select(.version == $version) | .manifestSha256' \
+              channel/minekot-rules-index.json)"
+            if [ -n "${existing_digest}" ]; then
+              test "${existing_digest}" = "${manifest_sha}"
+              exit 0
+            fi
+            previous_sha="$(sha256sum channel/minekot-rules-index.json | cut -d' ' -f1)"
+            previous_index="channel/minekot-rules-index.json"
+          else
+            previous_sha=""
+            echo '{"releases":[]}' > channel/minekot-rules-index.json
+            previous_index="channel/minekot-rules-index.json"
+          fi
+          jq \
+            --arg version "${RELEASE_VERSION}" \
+            --arg digest "${manifest_sha}" \
+            --arg previous "${previous_sha}" \
+            --arg generatedAt "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson sequence "${GITHUB_RUN_NUMBER}" \
+            --slurpfile manifest "${manifest}" \
+            '.releases + [{version:$version,manifestSha256:$digest,prerelease:false,withdrawn:false,
+            securityRevoked:false,spiMajor:$manifest[0].spiMajor,
+            minimumCoreVersion:$manifest[0].minimumCoreVersion,
+            maximumCoreVersionExclusive:$manifest[0].maximumCoreVersionExclusive,
+            minimumJavaVersion:$manifest[0].minimumJavaVersion,
+            testedHosts:$manifest[0].testedHosts}] |
+            sort_by(.version | split(".") | map(tonumber)) |
+            {schemaVersion:1,sequence:$sequence,
+            previousIndexSha256:(if $previous == "" then null else $previous end),
+            generatedAt:$generatedAt,releases:.}' \
+            "${previous_index}" > final/minekot-rules-index.json
+          cosign sign-blob --yes --bundle final/minekot-rules-index.sigstore.json \
+            final/minekot-rules-index.json
+          gh release view channel-stable >/dev/null 2>&1 || \
+            gh release create channel-stable --prerelease --title "MineKot Rules stable channel"
+          gh release upload channel-stable --clobber \
+            final/minekot-rules-index.json final/minekot-rules-index.sigstore.json
