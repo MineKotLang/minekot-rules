@@ -1,6 +1,6 @@
 # MineKot rule coverage
 
-This document is the canonical roadmap for concrete MineKot inspections, corrections, options, and behavioral fixtures. Shared SPI and adapters belong to [`minekot-inspections`](../minekot-inspections/CHECKS.md). Gradle/Detekt execution belongs to `minekot-toolchain`; IntelliJ activation belongs to `minekot-toolkit`.
+This document is the canonical roadmap for concrete MineKot inspections, corrections, options, and behavioral fixtures. Shared SPI and adapters belong to [`minekot-inspections`](https://github.com/MineKotLang/minekot-inspections/blob/master/CHECKS.md). Gradle/Detekt execution belongs to `minekot-toolchain`; IntelliJ activation belongs to `minekot-toolkit`.
 
 ## Status meanings
 
