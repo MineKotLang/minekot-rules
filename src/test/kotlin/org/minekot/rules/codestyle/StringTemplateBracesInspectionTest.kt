@@ -1,7 +1,9 @@
 package org.minekot.rules.codestyle
 
 import org.minekot.inspections.core.*
+import org.jetbrains.kotlin.CoreEnvironmentDeprecation
 import org.jetbrains.kotlin.K1Deprecation
+import org.jetbrains.kotlin.cli.create
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import com.intellij.openapi.util.Disposer
@@ -45,10 +47,10 @@ class StringTemplateBracesInspectionTest {
         assertEquals(2, inspect(source).size)
     }
 
-    @OptIn(CompilerConfiguration.Internals::class, K1Deprecation::class)
+    @OptIn(CompilerConfiguration.Internals::class, CoreEnvironmentDeprecation::class, K1Deprecation::class)
     private fun inspect(source: String): List<InspectionFinding> {
         val disposable = Disposer.newDisposable()
-        val configuration = CompilerConfiguration().apply {
+        val configuration = CompilerConfiguration.create().apply {
             put(CommonConfigurationKeys.MODULE_NAME, "minekot-rules-test")
         }
         val environment = KotlinCoreEnvironment.createForProduction(

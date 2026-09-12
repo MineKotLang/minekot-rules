@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Update the verified build and release tuple to Gradle 9.7.1, Kotlin 2.4.20, Detekt 2.0.0-alpha.6, IntelliJ IDEA 2026.1.5, inspections core 1.0.2, and Develocity 4.5.1. IDEA 2026.2 remains excluded until JetBrains resolves plugin-test startup blocker IJPL-248701.
+
 ### Features
 
 - Add focused Gradle repository, dependency, task, and test-configuration inspections.

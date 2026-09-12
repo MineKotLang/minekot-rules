@@ -3,7 +3,9 @@ package org.minekot.rules
 import com.intellij.openapi.util.Disposer
 import dev.detekt.api.Config
 import dev.detekt.api.RuleName
+import org.jetbrains.kotlin.CoreEnvironmentDeprecation
 import org.jetbrains.kotlin.K1Deprecation
+import org.jetbrains.kotlin.cli.create
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
@@ -42,13 +44,15 @@ class DetektAdapterIntegrationTest {
         assertEquals(source.length, finding.entity.location.text.end)
     }
 
-    @OptIn(CompilerConfiguration.Internals::class, K1Deprecation::class)
+    @OptIn(CompilerConfiguration.Internals::class, CoreEnvironmentDeprecation::class, K1Deprecation::class)
     private fun lint(rule: dev.detekt.api.Rule, source: String): List<dev.detekt.api.Finding> {
         val disposable = Disposer.newDisposable()
         return try {
             val environment = KotlinCoreEnvironment.createForProduction(
                 disposable,
-                CompilerConfiguration().apply { put(CommonConfigurationKeys.MODULE_NAME, "rules-detekt-integration") },
+                CompilerConfiguration.create().apply {
+                    put(CommonConfigurationKeys.MODULE_NAME, "rules-detekt-integration")
+                },
                 EnvironmentConfigFiles.JVM_CONFIG_FILES,
             )
             val file = KtPsiFactory(environment.project, false).createFile("build.gradle.kts", source)
