@@ -23,9 +23,21 @@ class ReleaseWorkflowContractTest {
         assertTrue(actionReferences.isNotEmpty())
         assertTrue(actionReferences.all { reference -> reference.matches(Regex("[0-9a-f]{40}")) })
         assertTrue(workflow.contains("cosign verify-blob"))
+        assertEquals(2, Regex("--new-bundle-format").findAll(workflow).count())
+        assertTrue(workflow.contains("config/rules-release-policy.json"))
         assertTrue(workflow.contains("MineKotLang/minekot-rules/.github/workflows/release.yml@refs/heads/master"))
         assertTrue(workflow.contains("test \"${'$'}(find existing -maxdepth 1 -type f | wc -l)\" -eq 4"))
         assertTrue(workflow.contains("cmp existing/SHA256SUMS final/SHA256SUMS"))
         assertTrue(workflow.indexOf("Publish immutable release") < workflow.indexOf("Update signed stable channel"))
+    }
+
+    /** Known unusable releases remain explicitly withdrawn from stable selection. */
+    @Test
+    fun `release policy withdraws legacy Sigstore bundle`() {
+        val policy = Path(System.getProperty("minekot.rootDir"), "config/rules-release-policy.json").readText()
+
+        assertTrue(policy.contains("\"withdrawn\""))
+        assertTrue(policy.contains("\"1.0.2\""))
+        assertTrue(policy.contains("\"securityRevoked\": []"))
     }
 }

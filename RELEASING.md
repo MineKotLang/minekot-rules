@@ -28,3 +28,5 @@ Successful release must contain exactly:
 - `SHA256SUMS`
 
 Release workflow verifies Sigstore certificate issuer and workflow identity before upload. Stable channel updates only after immutable release verification. Reruns accept existing assets only when JAR, manifest, checksums, and signature verify exactly.
+
+Cosign emits the standard Sigstore bundle format consumed by `sigstore-java`; legacy Cosign JSON envelopes are not host-compatible. Known unusable releases live in `config/rules-release-policy.json`, and each signed stable-index update applies its withdrawals and security revocations before host selection.

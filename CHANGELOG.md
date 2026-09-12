@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixes
 
+- Emit standard Sigstore bundles consumable by JVM hosts and withdraw legacy-bundle generation `1.0.2` from the signed stable channel.
 - Restore disabled defaults for deprecated or intent-sensitive rules, remove unsafe loop rewriting, and make non-public KDoc judgment opt-in.
 - Prefer available cancellation-safe MineKot catching helpers only in compatible suspend contexts.
 

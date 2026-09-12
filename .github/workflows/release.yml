@@ -53,6 +53,7 @@ jobs:
             -PreleaseCommit="${GITHUB_SHA}" \
             -PreleasePublishedAt="${published_at}"
           cosign sign-blob --yes \
+            --new-bundle-format \
             --bundle "final/minekot-rules-${RELEASE_VERSION}.manifest.sigstore.json" \
             "final/minekot-rules-${RELEASE_VERSION}.manifest.json"
           cosign verify-blob \
@@ -135,7 +136,13 @@ jobs:
             --arg generatedAt "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson sequence "${GITHUB_RUN_NUMBER}" \
             --slurpfile manifest "${manifest}" \
-            '.releases + [{version:$version,manifestSha256:$digest,prerelease:false,withdrawn:false,
+            --slurpfile policy config/rules-release-policy.json \
+            '(.releases | map(
+              .withdrawn = (.withdrawn or (.version as $releaseVersion |
+                ($policy[0].withdrawn | index($releaseVersion)) != null)) |
+              .securityRevoked = (.securityRevoked or (.version as $releaseVersion |
+                ($policy[0].securityRevoked | index($releaseVersion)) != null))
+            )) + [{version:$version,manifestSha256:$digest,prerelease:false,withdrawn:false,
             securityRevoked:false,spiMajor:$manifest[0].spiMajor,
             minimumCoreVersion:$manifest[0].minimumCoreVersion,
             maximumCoreVersionExclusive:$manifest[0].maximumCoreVersionExclusive,
@@ -146,7 +153,8 @@ jobs:
             previousIndexSha256:(if $previous == "" then null else $previous end),
             generatedAt:$generatedAt,releases:.}' \
             "${previous_index}" > final/minekot-rules-index.json
-          cosign sign-blob --yes --bundle final/minekot-rules-index.sigstore.json \
+          cosign sign-blob --yes --new-bundle-format \
+            --bundle final/minekot-rules-index.sigstore.json \
             final/minekot-rules-index.json
           gh release view channel-stable >/dev/null 2>&1 || \
             gh release create channel-stable --prerelease --title "MineKot Rules stable channel"
