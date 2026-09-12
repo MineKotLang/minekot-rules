@@ -155,6 +155,12 @@ tasks.register<AssembleRulesReleaseTask>("assembleRulesRelease") {
     releaseVersion = requestedVersion
     releaseCommit = providers.gradleProperty("releaseCommit")
     publishedAt = providers.gradleProperty("releasePublishedAt")
+    minimumCoreVersion = libs.versions.core.compatibility.minimum
+    maximumCoreVersionExclusive = libs.versions.core.compatibility.maximum.exclusive
+    minimumJavaVersion = projectJavaVersion
+    kotlinVersion = libs.versions.kotlin
+    detektVersion = libs.versions.detekt
+    ideaVersion = libs.versions.idea.version
     manifestFile = layout.projectDirectory.file(
         requestedVersion.map { selectedVersion -> "final/minekot-rules-${selectedVersion}.manifest.json" },
     )

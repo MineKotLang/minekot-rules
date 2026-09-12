@@ -60,6 +60,30 @@ public abstract class AssembleRulesReleaseTask : DefaultTask() {
     @get:Input
     public abstract val publishedAt: Property<String>
 
+    /** Oldest core release accepted by this rules generation. */
+    @get:Input
+    public abstract val minimumCoreVersion: Property<String>
+
+    /** First core release rejected by this rules generation. */
+    @get:Input
+    public abstract val maximumCoreVersionExclusive: Property<String>
+
+    /** JVM bytecode/runtime floor for loading this rules generation. */
+    @get:Input
+    public abstract val minimumJavaVersion: Property<Int>
+
+    /** Kotlin compiler/PSI version used to compile and test the rules. */
+    @get:Input
+    public abstract val kotlinVersion: Property<String>
+
+    /** Detekt adapter version exercised by the release test suite. */
+    @get:Input
+    public abstract val detektVersion: Property<String>
+
+    /** IntelliJ Platform version exercised by the release test suite. */
+    @get:Input
+    public abstract val ideaVersion: Property<String>
+
     /** Strict rules manifest emitted for signing. */
     @get:OutputFile
     public abstract val manifestFile: RegularFileProperty
@@ -79,7 +103,26 @@ public abstract class AssembleRulesReleaseTask : DefaultTask() {
         val digest = jar.readBytes().sha256()
         val expectedJarName = "minekot-rules-$version.jar"
         require(jar.name == expectedJarName) { "Expected $expectedJarName, found ${jar.name}." }
-        val manifest = renderManifest(version, jar.length(), digest)
+        val manifest = RulesReleaseManifestCodec.encode(
+            RulesReleaseManifest(
+                rulesVersion = version,
+                tag = "v$version",
+                commitSha = releaseCommit.get(),
+                publishedAt = publishedAt.get(),
+                jarName = jar.name,
+                jarSize = jar.length(),
+                jarSha256 = digest,
+                minimumCoreVersion = minimumCoreVersion.get(),
+                maximumCoreVersionExclusive = maximumCoreVersionExclusive.get(),
+                minimumJavaVersion = minimumJavaVersion.get(),
+                kotlinPsiBaseline = kotlinVersion.get(),
+                testedHosts = listOf(
+                    RulesTestedHost(RulesHostType.DETEKT, detektVersion.get(), kotlinVersion.get()),
+                    RulesTestedHost(RulesHostType.IDEA, ideaVersion.get(), kotlinVersion.get()),
+                ),
+                catalogProvider = jar.catalogProvider(),
+            ),
+        )
         val manifestOutput = manifestFile.get().asFile
         manifestOutput.parentFile.mkdirs()
         manifestOutput.writeText(manifest)
@@ -88,31 +131,24 @@ public abstract class AssembleRulesReleaseTask : DefaultTask() {
         )
     }
 
-    private fun renderManifest(version: String, jarSize: Long, jarDigest: String): String =
-        """
-        {
-          "schemaVersion": 1,
-          "rulesVersion": "$version",
-          "tag": "v$version",
-          "commitSha": "${releaseCommit.get()}",
-          "publishedAt": "${publishedAt.get()}",
-          "jarName": "minekot-rules-$version.jar",
-          "jarSize": $jarSize,
-          "jarSha256": "$jarDigest",
-          "spiMajor": 1,
-          "minimumCoreVersion": "1.0.0",
-          "maximumCoreVersionExclusive": "2.0.0",
-          "minimumJavaVersion": 21,
-          "kotlinPsiBaseline": "2.4.20",
-          "testedHosts": [
-            {"hostType":"DETEKT","hostVersion":"2.0.0-alpha.6","kotlinVersion":"2.4.20"},
-            {"hostType":"IDEA","hostVersion":"2026.1.5","kotlinVersion":"2.4.20"}
-          ],
-          "catalogProvider": "org.minekot.rules.MineKotRulesCatalog",
-          "configurationSchemaVersion": 1
-        }
-        """.trimIndent() + "\n"
 }
+
+private const val CATALOG_SERVICE_ENTRY =
+    "META-INF/services/org.minekot.inspections.core.MineKotInspectionCatalog"
+
+private fun java.io.File.catalogProvider(): String =
+    ZipFile(this).use { archive ->
+        val entry = requireNotNull(archive.getEntry(CATALOG_SERVICE_ENTRY)) {
+            "Rules JAR is missing its catalog service entry."
+        }
+        val providers = archive.getInputStream(entry)
+            .bufferedReader()
+            .readLines()
+            .map(String::trim)
+            .filter { line -> line.isNotEmpty() && !line.startsWith('#') }
+        require(providers.size == 1) { "Rules JAR must declare exactly one catalog provider." }
+        providers.single()
+    }
 
 private fun ByteArray.sha256(): String =
     MessageDigest.getInstance("SHA-256")

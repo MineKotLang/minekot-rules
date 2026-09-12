@@ -1,7 +1,10 @@
 package org.minekot.rules.build
 
 import org.gradle.testfixtures.ProjectBuilder
-import org.junit.Assert.*
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.util.zip.ZipEntry
@@ -15,7 +18,7 @@ class RulesReleaseTasksTest {
     @Test
     fun `release assembly is deterministic`() {
         val project = ProjectBuilder.builder().withProjectDir(temporary.newFolder("project")).build()
-        val jar = temporary.newFile("minekot-rules-1.0.42.jar").apply { writeText("rules") }
+        val jar = zip("minekot-rules-1.0.42.jar", "org/minekot/rules/Rule.class")
         val firstManifest = temporary.newFile("first-manifest.json")
         val firstChecksums = temporary.newFile("first-SHA256SUMS")
         val task = project.tasks.register("firstRelease", AssembleRulesReleaseTask::class.java).get().apply {
@@ -23,6 +26,12 @@ class RulesReleaseTasksTest {
             releaseVersion.set("1.0.42")
             releaseCommit.set("a".repeat(COMMIT_LENGTH))
             publishedAt.set("2026-08-13T00:00:00Z")
+            minimumCoreVersion.set("1.0.0")
+            maximumCoreVersionExclusive.set("2.0.0")
+            minimumJavaVersion.set(21)
+            kotlinVersion.set("2.4.20")
+            detektVersion.set("2.0.0-alpha.6")
+            ideaVersion.set("2026.1.5")
             manifestFile.set(firstManifest)
             checksumsFile.set(firstChecksums)
         }
@@ -34,7 +43,16 @@ class RulesReleaseTasksTest {
 
         assertArrayEquals(expectedManifest, firstManifest.readBytes())
         assertArrayEquals(expectedChecksums, firstChecksums.readBytes())
-        assertTrue(firstManifest.readText().contains("\"rulesVersion\": \"1.0.42\""))
+        val decoded = RulesReleaseManifestCodec.decode(firstManifest.readText())
+        assertEquals("1.0.42", decoded.rulesVersion)
+        assertEquals("org.minekot.rules.Catalog", decoded.catalogProvider)
+        assertEquals(
+            listOf(
+                RulesTestedHost(RulesHostType.DETEKT, "2.0.0-alpha.6", "2.4.20"),
+                RulesTestedHost(RulesHostType.IDEA, "2026.1.5", "2.4.20"),
+            ),
+            decoded.testedHosts,
+        )
         assertEquals(2, firstChecksums.readLines().size)
     }
 
